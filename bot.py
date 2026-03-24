@@ -38,7 +38,7 @@ CHAT_ID        = os.environ.get("CHAT_ID", "")      # your Telegram user ID (for
 WATCHLIST_FILE = "watchlist.json"
 
 # Your current portfolio pre-loaded as defaults
-DEFAULT_STOCKS = ["AMZN", "NVDA", "IREN", "ONDS", "SOFI", "XEQT.TO", "CGL-C.TO"]
+DEFAULT_STOCKS = ["AMZN", "NVDA", "IREN", "ONDS", "SOFI", "XEQT", "CGL.C"]
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
@@ -66,12 +66,17 @@ def fetch_news_summary(stocks: list[str]) -> str:
             "role": "user",
             "content": (
                 f"Search for the very latest news (today) for each of these stocks: {tickers}.\n\n"
-                "For EACH ticker output:\n"
-                "  • **TICKER** — Company name\n"
-                "  • 1-2 key headlines\n"
-                "  • Sentiment: 🟢 Bullish / 🔴 Bearish / 🟡 Neutral\n"
-                "  • One sentence on what this means for a long-term investor holding this stock\n\n"
-                "Keep it concise and practical. No lengthy disclaimers."
+                "IMPORTANT TICKER NOTES:\n"
+                "- CGL.C = iShares Gold Bullion ETF (CAD-hedged) on TSX — NOT Cervus Equipment\n"
+                "- XEQT = iShares Core Equity ETF Portfolio on TSX\n\n"
+                "For EACH stock output EXACTLY this format. Use NO markdown, NO **, NO ##, NO bullet points:\n\n"
+                "TICKER - Company Name\n"
+                "Sentiment: 🟢 Bullish  (or 🔴 Bearish or 🟡 Neutral)\n"
+                "News: headline one\n"
+                "News: headline two\n"
+                "Tip: one sentence on what this means for a long-term investor\n"
+                "────────────────────\n\n"
+                "Keep it clean and simple. Plain text only. No asterisks, no hashtags, no extra formatting."
             ),
         }
     ]
