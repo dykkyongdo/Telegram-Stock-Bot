@@ -65,18 +65,14 @@ def fetch_news_summary(stocks: list[str]) -> str:
         {
             "role": "user",
             "content": (
-                f"Search for the very latest news (today) for each of these stocks: {tickers}.\n\n"
-                "IMPORTANT TICKER NOTES:\n"
-                "- CGL.C = iShares Gold Bullion ETF (CAD-hedged) on TSX — NOT Cervus Equipment\n"
-                "- XEQT = iShares Core Equity ETF Portfolio on TSX\n\n"
-                "For EACH stock output EXACTLY this format. Use NO markdown, NO **, NO ##, NO bullet points:\n\n"
-                "TICKER - Company Name\n"
-                "Sentiment: 🟢 Bullish  (or 🔴 Bearish or 🟡 Neutral)\n"
-                "News: headline one\n"
-                "News: headline two\n"
-                "Tip: one sentence on what this means for a long-term investor\n"
-                "────────────────────\n\n"
-                "Keep it clean and simple. Plain text only. No asterisks, no hashtags, no extra formatting."
+                f"Search today's news for these stocks: {tickers}\n\n"
+                "Notes: CGL.C = iShares Gold Bullion ETF Canada. XEQT = iShares Core Equity ETF Canada.\n\n"
+                "For each stock, plain text only, no markdown:\n\n"
+                "TICKER - Name\n"
+                "Sentiment: 🟢 Bullish / 🔴 Bearish / 🟡 Neutral\n"
+                "News: headline\n"
+                "Tip: one sentence for a long-term investor\n"
+                "---"
             ),
         }
     ]
@@ -84,8 +80,8 @@ def fetch_news_summary(stocks: list[str]) -> str:
     # Handle the tool-use loop (web_search may run multiple times)
     while True:
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1500,
             system=(
                 "You are a concise financial news assistant for a retail investor. "
                 "Always search the web for the latest news before answering. "
