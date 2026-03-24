@@ -1,6 +1,6 @@
 """
-Stock News Telegram Bot
------------------------
+Stock News Telegram Bot (OpenAI edition)
+-----------------------------------------
 Commands:
   /start      — welcome + help
   /help       — same as start
@@ -16,7 +16,7 @@ import logging
 import asyncio
 from datetime import time
 
-import anthropic
+from openai import OpenAI
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -32,15 +32,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]       # from BotFather
-ANTHROPIC_KEY  = os.environ["ANTHROPIC_API_KEY"]    # from console.anthropic.com
-CHAT_ID        = os.environ.get("CHAT_ID", "")      # your Telegram user ID (for daily alerts)
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]     # from BotFather
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]     # from platform.openai.com
+CHAT_ID        = os.environ.get("CHAT_ID", "")   # your Telegram user ID (for daily alerts)
 WATCHLIST_FILE = "watchlist.json"
 
 # Your current portfolio pre-loaded as defaults
 DEFAULT_STOCKS = ["AMZN", "NVDA", "IREN", "ONDS", "SOFI", "XEQT", "CGL.C"]
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # ── Watchlist helpers ─────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ def save_watchlist(stocks: list[str]) -> None:
 
 # ── AI news fetcher ───────────────────────────────────────────────────────────
 def fetch_news_summary(stocks: list[str]) -> str:
-    """Use Claude + web search to get today's news for each stock."""
+    """Use Claude Sonnet + web search to get today's news for each stock."""
     tickers = ", ".join(stocks)
 
     messages = [
@@ -67,7 +67,7 @@ def fetch_news_summary(stocks: list[str]) -> str:
             "content": (
                 f"Search today's news for these stocks: {tickers}\n\n"
                 "Notes: CGL.C = iShares Gold Bullion ETF Canada. XEQT = iShares Core Equity ETF Canada.\n\n"
-                "For each stock, plain text only, no markdown:\n\n"
+                "For each stock, plain text only, no markdown, no asterisks, no hashtags:\n\n"
                 "TICKER - Name\n"
                 "Sentiment: 🟢 Bullish / 🔴 Bearish / 🟡 Neutral\n"
                 "News: headline\n"
@@ -80,12 +80,12 @@ def fetch_news_summary(stocks: list[str]) -> str:
     # Handle the tool-use loop (web_search may run multiple times)
     while True:
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
             system=(
                 "You are a concise financial news assistant for a retail investor. "
                 "Always search the web for the latest news before answering. "
-                "Summaries must be short, clear, and actionable."
+                "Use plain text only — no markdown, no bold, no headers."
             ),
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=messages,
@@ -118,15 +118,14 @@ def fetch_news_summary(stocks: list[str]) -> str:
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     stocks = load_watchlist()
     await update.message.reply_text(
-        "👋 *Stock News Bot*\n\n"
+        "👋 Stock News Bot\n\n"
         "Here's what I can do:\n\n"
         "📊 /portfolio — view your watchlist\n"
-        "➕ /add TICKER — add a stock  _(e.g. /add AAPL)_\n"
+        "➕ /add TICKER — add a stock (e.g. /add AAPL)\n"
         "➖ /remove TICKER — remove a stock\n"
-        "📰 /news — get AI-powered news summary\n"
+        "📰 /news — get AI news summary\n"
         "❓ /help — show this message\n\n"
-        f"Your current watchlist: `{', '.join(stocks)}`",
-        parse_mode="Markdown",
+        f"Your current watchlist: {', '.join(stocks)}",
     )
 
 
@@ -136,10 +135,7 @@ async def cmd_portfolio(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Your watchlist is empty. Use /add TICKER to get started.")
         return
     lines = "\n".join(f"  • {s}" for s in stocks)
-    await update.message.reply_text(
-        f"📊 *Your Watchlist* ({len(stocks)} stocks)\n\n{lines}",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(f"📊 Your Watchlist ({len(stocks)} stocks)\n\n{lines}")
 
 
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -149,11 +145,11 @@ async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     ticker = ctx.args[0].upper()
     stocks = load_watchlist()
     if ticker in stocks:
-        await update.message.reply_text(f"*{ticker}* is already in your watchlist! ✅", parse_mode="Markdown")
+        await update.message.reply_text(f"{ticker} is already in your watchlist! ✅")
         return
     stocks.append(ticker)
     save_watchlist(stocks)
-    await update.message.reply_text(f"✅ *{ticker}* has been added to your watchlist!", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ {ticker} added to your watchlist!")
 
 
 async def cmd_remove(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -163,11 +159,11 @@ async def cmd_remove(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     ticker = ctx.args[0].upper()
     stocks = load_watchlist()
     if ticker not in stocks:
-        await update.message.reply_text(f"*{ticker}* is not in your watchlist.", parse_mode="Markdown")
+        await update.message.reply_text(f"{ticker} is not in your watchlist.")
         return
     stocks.remove(ticker)
     save_watchlist(stocks)
-    await update.message.reply_text(f"❌ *{ticker}* has been removed from your watchlist.", parse_mode="Markdown")
+    await update.message.reply_text(f"❌ {ticker} removed from your watchlist.")
 
 
 async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -175,30 +171,25 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not stocks:
         await update.message.reply_text("Your watchlist is empty. Use /add TICKER to add stocks.")
         return
-    await update.message.reply_text(
-        f"🔍 Searching news for {len(stocks)} stocks… this takes ~15 seconds, hang tight!"
-    )
+    await update.message.reply_text(f"🔍 Searching news for {len(stocks)} stocks… hang tight!")
     loop = asyncio.get_event_loop()
     try:
         summary = await loop.run_in_executor(None, fetch_news_summary, stocks)
-        # Telegram has a 4096 char limit — split if needed
         if len(summary) > 4000:
             chunks = [summary[i:i+4000] for i in range(0, len(summary), 4000)]
             for i, chunk in enumerate(chunks):
-                header = "📰 *News Summary*\n\n" if i == 0 else ""
-                await update.message.reply_text(header + chunk, parse_mode="Markdown")
+                header = "📰 News Summary\n\n" if i == 0 else ""
+                await update.message.reply_text(header + chunk)
         else:
-            await update.message.reply_text(f"📰 *News Summary*\n\n{summary}", parse_mode="Markdown")
+            await update.message.reply_text(f"📰 News Summary\n\n{summary}")
     except Exception:
         logger.exception("Error fetching news")
-        await update.message.reply_text("⚠️ Something went wrong fetching the news. Please try again in a moment.")
+        await update.message.reply_text("⚠️ Something went wrong. Please try again in a moment.")
 
 
 # ── Daily briefing job ────────────────────────────────────────────────────────
 async def daily_briefing(ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    """Runs every morning at 8:00 AM UTC and sends a news summary."""
     if not CHAT_ID:
-        logger.info("No CHAT_ID set — skipping daily briefing.")
         return
     stocks = load_watchlist()
     if not stocks:
@@ -206,13 +197,13 @@ async def daily_briefing(ctx: ContextTypes.DEFAULT_TYPE) -> None:
     loop = asyncio.get_event_loop()
     try:
         summary = await loop.run_in_executor(None, fetch_news_summary, stocks)
-        msg = f"🌅 *Good Morning — Daily Stock Briefing*\n\n{summary}"
+        msg = f"🌅 Good Morning — Daily Stock Briefing\n\n{summary}"
         if len(msg) > 4000:
             chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
             for chunk in chunks:
-                await ctx.bot.send_message(chat_id=CHAT_ID, text=chunk, parse_mode="Markdown")
+                await ctx.bot.send_message(chat_id=CHAT_ID, text=chunk)
         else:
-            await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+            await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
     except Exception:
         logger.exception("Daily briefing failed")
 
@@ -228,12 +219,13 @@ def main() -> None:
     app.add_handler(CommandHandler("remove",    cmd_remove))
     app.add_handler(CommandHandler("news",      cmd_news))
 
-    # Schedule daily briefing at 8:00 AM UTC (adjust hour to your timezone)
+    # Daily briefing at 15:00 UTC = 8:00 AM Vancouver (PDT)
+    # Change to hour=16 during PST (November to March)
     if CHAT_ID:
-        app.job_queue.run_daily(daily_briefing, time=time(hour=8, minute=0))
-        logger.info("✅ Daily briefing scheduled at 08:00 UTC")
+        app.job_queue.run_daily(daily_briefing, time=time(hour=15, minute=0))
+        logger.info("✅ Daily briefing scheduled at 15:00 UTC (8:00 AM Vancouver PDT)")
 
-    logger.info("🤖 Bot is running — press Ctrl+C to stop.")
+    logger.info("🤖 Bot is running!")
     app.run_polling(drop_pending_updates=True)
 
 
