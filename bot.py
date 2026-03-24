@@ -1,13 +1,13 @@
 """
-Stock News Telegram Bot (OpenAI edition)
------------------------------------------
+Stock News Telegram Bot
+-----------------------
 Commands:
-  /start      — welcome + help
-  /help       — same as start
-  /portfolio  — view your watchlist
-  /add TICKER — add a stock
-  /remove TICKER — remove a stock
-  /news       — AI-powered news summary for all your stocks
+  /start      - welcome + help
+  /help       - same as start
+  /portfolio  - view your watchlist
+  /add TICKER - add a stock
+  /remove TICKER - remove a stock
+  /news       - AI-powered news summary for all your stocks
 """
 
 import os
@@ -16,7 +16,7 @@ import logging
 import asyncio
 from datetime import time
 
-from openai import OpenAI
+import anthropic
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -24,26 +24,25 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+# Logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ── Config ────────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]     # from BotFather
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]     # from platform.openai.com
-CHAT_ID        = os.environ.get("CHAT_ID", "")   # your Telegram user ID (for daily alerts)
+# Config
+TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
+ANTHROPIC_KEY  = os.environ["ANTHROPIC_API_KEY"]
+CHAT_ID        = os.environ.get("CHAT_ID", "")
 WATCHLIST_FILE = "watchlist.json"
 
-# Your current portfolio pre-loaded as defaults
 DEFAULT_STOCKS = ["AMZN", "NVDA", "IREN", "ONDS", "SOFI", "XEQT", "CGL.C"]
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
 
-# ── Watchlist helpers ─────────────────────────────────────────────────────────
+# Watchlist helpers
 def load_watchlist() -> list[str]:
     if os.path.exists(WATCHLIST_FILE):
         with open(WATCHLIST_FILE) as f:
@@ -56,9 +55,8 @@ def save_watchlist(stocks: list[str]) -> None:
         json.dump({"stocks": stocks}, f, indent=2)
 
 
-# ── AI news fetcher ───────────────────────────────────────────────────────────
+# AI news fetcher
 def fetch_news_summary(stocks: list[str]) -> str:
-    """Use Claude Sonnet + web search to get today's news for each stock."""
     tickers = ", ".join(stocks)
 
     messages = [
@@ -69,15 +67,14 @@ def fetch_news_summary(stocks: list[str]) -> str:
                 "Notes: CGL.C = iShares Gold Bullion ETF Canada. XEQT = iShares Core Equity ETF Canada.\n\n"
                 "For each stock, plain text only, no markdown, no asterisks, no hashtags:\n\n"
                 "TICKER - Name\n"
-                "Sentiment: 🟢 Bullish / 🔴 Bearish / 🟡 Neutral\n"
-                "News: headline\n"
+                "Sentiment: one of Bullish / Bearish / Neutral (with emoji)\n"
+                "News: one key headline\n"
                 "Tip: one sentence for a long-term investor\n"
                 "---"
             ),
         }
     ]
 
-    # Handle the tool-use loop (web_search may run multiple times)
     while True:
         resp = client.messages.create(
             model="claude-sonnet-4-6",
@@ -111,31 +108,31 @@ def fetch_news_summary(stocks: list[str]) -> str:
             ]
             messages.append({"role": "user", "content": tool_results})
         else:
-            return "\n\n".join(text_parts) or "Unexpected response from AI."
+            return "\n\n".join(text_parts) or "Unexpected response."
 
 
-# ── Command handlers ──────────────────────────────────────────────────────────
+# Command handlers
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     stocks = load_watchlist()
     await update.message.reply_text(
         "👋 Stock News Bot\n\n"
-        "Here's what I can do:\n\n"
+        "Commands:\n\n"
         "📊 /portfolio — view your watchlist\n"
         "➕ /add TICKER — add a stock (e.g. /add AAPL)\n"
         "➖ /remove TICKER — remove a stock\n"
         "📰 /news — get AI news summary\n"
         "❓ /help — show this message\n\n"
-        f"Your current watchlist: {', '.join(stocks)}",
+        f"Your watchlist: {', '.join(stocks)}",
     )
 
 
 async def cmd_portfolio(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     stocks = load_watchlist()
     if not stocks:
-        await update.message.reply_text("Your watchlist is empty. Use /add TICKER to get started.")
+        await update.message.reply_text("Watchlist is empty. Use /add TICKER to get started.")
         return
-    lines = "\n".join(f"  • {s}" for s in stocks)
-    await update.message.reply_text(f"📊 Your Watchlist ({len(stocks)} stocks)\n\n{lines}")
+    lines = "\n".join(f"  - {s}" for s in stocks)
+    await update.message.reply_text(f"Your Watchlist ({len(stocks)} stocks)\n\n{lines}")
 
 
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -145,11 +142,11 @@ async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     ticker = ctx.args[0].upper()
     stocks = load_watchlist()
     if ticker in stocks:
-        await update.message.reply_text(f"{ticker} is already in your watchlist! ✅")
+        await update.message.reply_text(f"{ticker} is already in your watchlist!")
         return
     stocks.append(ticker)
     save_watchlist(stocks)
-    await update.message.reply_text(f"✅ {ticker} added to your watchlist!")
+    await update.message.reply_text(f"✅ {ticker} added!")
 
 
 async def cmd_remove(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -163,15 +160,15 @@ async def cmd_remove(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     stocks.remove(ticker)
     save_watchlist(stocks)
-    await update.message.reply_text(f"❌ {ticker} removed from your watchlist.")
+    await update.message.reply_text(f"❌ {ticker} removed.")
 
 
 async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     stocks = load_watchlist()
     if not stocks:
-        await update.message.reply_text("Your watchlist is empty. Use /add TICKER to add stocks.")
+        await update.message.reply_text("Watchlist is empty. Use /add TICKER to add stocks.")
         return
-    await update.message.reply_text(f"🔍 Searching news for {len(stocks)} stocks… hang tight!")
+    await update.message.reply_text(f"🔍 Searching news for {len(stocks)} stocks... hang tight!")
     loop = asyncio.get_event_loop()
     try:
         summary = await loop.run_in_executor(None, fetch_news_summary, stocks)
@@ -184,10 +181,10 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text(f"📰 News Summary\n\n{summary}")
     except Exception:
         logger.exception("Error fetching news")
-        await update.message.reply_text("⚠️ Something went wrong. Please try again in a moment.")
+        await update.message.reply_text("⚠️ Something went wrong. Please try again.")
 
 
-# ── Daily briefing job ────────────────────────────────────────────────────────
+# Daily briefing
 async def daily_briefing(ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not CHAT_ID:
         return
@@ -208,7 +205,7 @@ async def daily_briefing(ctx: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Daily briefing failed")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 def main() -> None:
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
@@ -219,11 +216,10 @@ def main() -> None:
     app.add_handler(CommandHandler("remove",    cmd_remove))
     app.add_handler(CommandHandler("news",      cmd_news))
 
-    # Daily briefing at 15:00 UTC = 8:00 AM Vancouver (PDT)
-    # Change to hour=16 during PST (November to March)
+    # 15:00 UTC = 8:00 AM Vancouver PDT (change to 16 during PST Nov-Mar)
     if CHAT_ID:
         app.job_queue.run_daily(daily_briefing, time=time(hour=15, minute=0))
-        logger.info("✅ Daily briefing scheduled at 15:00 UTC (8:00 AM Vancouver PDT)")
+        logger.info("✅ Daily briefing scheduled at 15:00 UTC")
 
     logger.info("🤖 Bot is running!")
     app.run_polling(drop_pending_updates=True)
